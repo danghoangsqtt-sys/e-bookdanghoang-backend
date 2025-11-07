@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 # --- CẤU HÌNH CORS (ĐÃ RẤT TỐT) ---
 # Chỉ cần dòng này, flask-cors sẽ TỰ ĐỘNG xử lý các yêu cầu OPTIONS
-CORS(app, resources={r"/chat": {"origins": "https://e-book-for-me.web.app"}})
+CORS(app, resources={r"/chat": {"origins": "https://e-book-for-me.app"}})
 # ------------------------------------
 
 # Cấu hình API của Google Gemini
