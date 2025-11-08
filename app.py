@@ -11,7 +11,11 @@ app = Flask(__name__)
 
 # --- CẤU HÌNH CORS (ĐÃ RẤT TỐT) ---
 # Chỉ cần dòng này, flask-cors sẽ TỰ ĐỘNG xử lý các yêu cầu OPTIONS
-CORS(app, resources={r"/chat": {"origins": "https://e-book-for-me.web.app"}})
+CORS(app, resources={r"/*": {"origins": ["https://e-book-for-me.web.app"]}},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "OPTIONS"])
+
 # ------------------------------------
 
 # Cấu hình API của Google Gemini
@@ -89,6 +93,13 @@ def chat():
 
 # Khối này CHỈ CHẠY khi bạn test trên máy tính (local)
 # Render sẽ không chạy khối này, mà nó dùng lệnh Gunicorn
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://e-book-for-me.web.app')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
