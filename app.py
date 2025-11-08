@@ -4,33 +4,53 @@ from flask_cors import CORS
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Tải các biến môi trường từ tệp .env
+# --- Load biến môi trường ---
 load_dotenv()
 
 app = Flask(__name__)
 
-# --- CẤU HÌNH CORS (ĐÃ RẤT TỐT) ---
-# Chỉ cần dòng này, flask-cors sẽ TỰ ĐỘNG xử lý các yêu cầu OPTIONS
-CORS(app, resources={r"/*": {"origins": ["https://e-book-for-me.web.app"]}},
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization"],
-     methods=["GET", "POST", "OPTIONS"])
+# --- Cấu hình CORS (hoạt động ổn định trên Render) ---
+CORS(
+    app,
+    resources={r"/*": {"origins": ["https://e-book-for-me.web.app"]}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "OPTIONS"]
+)
 
-# ------------------------------------
+# --- Sau mỗi phản hồi, tự thêm header CORS (đảm bảo không bị chặn OPTIONS) ---
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://e-book-for-me.web.app')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
-# Cấu hình API của Google Gemini
+# --- Cấu hình Gemini API ---
 try:
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     if not gemini_api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables.")
+        raise ValueError("⚠️ GEMINI_API_KEY not found in environment variables.")
+    
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel('gemini-2.5-pro-latest')
+    print("✅ Gemini API key loaded successfully.")
+
+    # Liệt kê các model có thể sử dụng để kiểm tra trên Render log
+    print("📋 Available models:")
+    for m in genai.list_models():
+        if "generateContent" in m.supported_generation_methods:
+            print(" -", m.name)
+
+    # Dùng model mới, tương thích bản SDK hiện tại
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
 except Exception as e:
-    print(f"Error configuring Gemini API: {e}")
+    print(f"❌ Error configuring Gemini API: {e}")
     model = None
 
+
+# --- Hàm sinh phản hồi stream ---
 def generate_response_stream(prompt):
-    """Hàm tạo phản hồi dưới dạng stream (ĐÃ RẤT TỐT)."""
     if not model:
         yield "data: [ERROR] Gemini model is not configured.\n\n"
         return
@@ -40,66 +60,53 @@ def generate_response_stream(prompt):
         response_stream = chat_session.send_message(prompt, stream=True)
 
         for chunk in response_stream:
-            # Gửi từng phần của phản hồi về cho frontend
-            yield f"data: {chunk.text}\n\n"
+            if chunk.text:
+                yield f"data: {chunk.text}\n\n"
 
     except Exception as e:
-        print(f"Error during generation: {e}")
+        print(f"⚠️ Error during generation: {e}")
         yield f"data: [ERROR] Sorry, an error occurred: {str(e)}\n\n"
 
-# --- ĐÃ XÓA 'OPTIONS' KHỎI ĐÂY ---
+
+# --- API chính ---
 @app.route('/chat', methods=['POST'])
 def chat():
-    # --- KHÔNG CẦN KIỂM TRA 'OPTIONS' NỮA ---
-    # if request.method == 'OPTIONS':
-    #     return _build_cors_preflight_response()
-
     try:
-        data = request.json
+        data = request.json or {}
         user_message = data.get('message', '')
         conversation_history = data.get('conversation_history', [])
         document_content = data.get('document_content', '')
         dictionary_content = data.get('dictionary_content', '')
         language = data.get('language', 'vi')
-        
-        # Xây dựng một prompt hoàn chỉnh cho AI (ĐÃ RẤT TỐT)
-        prompt = f"""You are an AI assistant for an e-learning platform. Your user is currently studying a document.
-        Your primary language for response should be: {'Vietnamese' if language == 'vi' else 'English'}.
 
-        Here is the user's conversation history (for context):
-        {conversation_history}
+        prompt = f"""
+You are an AI assistant for an e-learning platform.
+Respond in {'Vietnamese' if language == 'vi' else 'English'}.
 
-        Here is the content of the document the user is viewing:
-        --- DOCUMENT START ---
-        {document_content}
-        --- DOCUMENT END ---
+Conversation history:
+{conversation_history}
 
-        Here is a custom dictionary/glossary provided by the user:
-        --- DICTIONARY START ---
-        {dictionary_content}
-        --- DICTIONARY END ---
+Document content:
+--- DOCUMENT START ---
+{document_content}
+--- DOCUMENT END ---
 
-        Based on all the information above, please respond to the user's latest message: "{user_message}"
-        """
+Custom dictionary/glossary:
+--- DICTIONARY START ---
+{dictionary_content}
+--- DICTIONARY END ---
 
-        # Trả về một Response object với generator function (ĐÃ RẤT TỐT)
+User's latest message: "{user_message}"
+"""
+
         return Response(generate_response_stream(prompt), mimetype='text/event-stream')
 
     except Exception as e:
-        print(f"Error in /chat endpoint: {e}")
-        return jsonify({"error": "An internal server error occurred."}), 500
+        print(f"❌ Error in /chat endpoint: {e}")
+        return jsonify({"error": "Internal server error occurred."}), 500
 
-# --- ĐÃ XÓA HÀM _build_cors_preflight_response() BỊ THỪA ---
 
-# Khối này CHỈ CHẠY khi bạn test trên máy tính (local)
-# Render sẽ không chạy khối này, mà nó dùng lệnh Gunicorn
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://e-book-for-me.web.app')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    return response
-
+# --- Chạy local ---
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
