@@ -42,7 +42,7 @@ try:
             print(" -", m.name)
 
     # Dùng model mới, tương thích bản SDK hiện tại
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model = genai.GenerativeModel('gemini-flash-latest')
 
 except Exception as e:
     print(f"❌ Error configuring Gemini API: {e}")
