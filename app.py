@@ -13,7 +13,7 @@ app = Flask(__name__)
 # Cấu hình này đã đủ cho Render và test local
 CORS(
     app,
-    origins=["https://e-book-for-me.web.app", "http://localhost:3000", "http://127.0.0.1:5500"],
+    origins=["https://e-book-for-me.web.app", "http://localhost:3000", "http://127.0.0.1:5500", "https://dhebook.io.vn"],
     supports_credentials=True
 )
 
